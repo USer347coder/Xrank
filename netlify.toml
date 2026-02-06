@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[functions.renderCard]
+  external_node_modules = ["@sparticuz/chromium-min", "playwright-core"]
+
+[functions.captureSnapshot]
+  external_node_modules = ["@sparticuz/chromium-min", "playwright-core"]
+
+[dev]
+  command = "npm run dev"
+  targetPort = 5173
+  port = 8888
+  autoLaunch = false
