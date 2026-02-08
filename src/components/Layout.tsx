@@ -48,7 +48,7 @@ export default function Layout() {
     const u = username.trim().replace(/^@/, '');
     if (!u) return;
     setOpen(false);
-    navigate(`/@${u}`);
+    navigate(`/profile/${u}`);
   }
 
   return (
