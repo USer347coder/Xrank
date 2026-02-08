@@ -23,14 +23,12 @@ const COMING_SOON = [
 
 export default function Leaderboard() {
   const [items, setItems] = useState<LeaderboardItem[]>([]);
-  const [days, setDays] = useState(7);
-  const [limit, setLimit] = useState(24);
   const [loading, setLoading] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      const res = await getLeaderboard(days, limit);
+      const res = await getLeaderboard();
       setItems(res.items || []);
     } finally {
       setLoading(false);
@@ -39,7 +37,7 @@ export default function Leaderboard() {
 
   useEffect(() => {
     load();
-  }, [days, limit]);
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -48,31 +46,10 @@ export default function Leaderboard() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
             <div className="text-xs font-bold tracking-[0.18em] opacity-90">RANKING BOARD</div>
-            <div className="text-xs opacity-50 mt-0.5">Top Minted Editions &middot; Highest score on top</div>
+            <div className="text-xs opacity-50 mt-0.5">Top 100 from last month &middot; Updates monthly</div>
           </div>
 
           <div className="flex items-center gap-3">
-            <select
-              value={days}
-              onChange={(e) => setDays(parseInt(e.target.value, 10))}
-              className="px-3 py-2 rounded-xl border border-white/15 bg-black/30 text-xs text-white outline-none"
-            >
-              <option value={1}>Last 24h</option>
-              <option value={7}>Last 7 days</option>
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-            </select>
-
-            <select
-              value={limit}
-              onChange={(e) => setLimit(parseInt(e.target.value, 10))}
-              className="px-3 py-2 rounded-xl border border-white/15 bg-black/30 text-xs text-white outline-none"
-            >
-              <option value={12}>Top 12</option>
-              <option value={24}>Top 24</option>
-              <option value={48}>Top 48</option>
-            </select>
-
             <button
               onClick={load}
               disabled={loading}

@@ -7,15 +7,22 @@ export const config: Config = {
   method: ['GET', 'OPTIONS'],
 };
 
+function startOfMonthUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0));
+}
+
 export default async (req: Request) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
   try {
     const url = new URL(req.url);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '24', 10), 100);
-    const days = Math.min(parseInt(url.searchParams.get('days') || '7', 10), 30);
-
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    // Leaderboard is fixed for the month: show the previous full calendar month.
+    const limit = 100;
+    const now = new Date();
+    const monthStart = startOfMonthUTC(now);
+    const prevMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1, 0, 0, 0));
+    const windowStart = prevMonthStart.toISOString();
+    const windowEnd = monthStart.toISOString();
 
     // Only list snapshots that have at least one PUBLIC vault entry.
     // Push sorting/limiting into SQL.
@@ -25,7 +32,8 @@ export default async (req: Request) => {
         'id, profile_id, score, captured_at, card_number, provenance, vault_entries(visibility)',
         { count: 'exact' }
       )
-      .gte('captured_at', since)
+      .gte('captured_at', windowStart)
+      .lt('captured_at', windowEnd)
       .order('score->>value', { ascending: false })
       .limit(limit * 2);
 
@@ -70,7 +78,12 @@ export default async (req: Request) => {
       ),
     }));
 
-    return jsonResponse({ since, days, limit, total: shareableTotal, items });
+    return jsonResponse({
+      window: { start: windowStart, end: windowEnd, label: 'previous_month' },
+      limit,
+      total: shareableTotal,
+      items,
+    });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return errorResponse(msg);

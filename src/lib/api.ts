@@ -60,10 +60,22 @@ export async function getAssets(snapshotId: string): Promise<{ assets: CardAsset
 
 // ── Leaderboard ──
 export async function getLeaderboard(
-  days = 7,
-  limit = 24
+  days?: number,
+  limit?: number
 ): Promise<{ items: LeaderboardItem[] }> {
-  const res = await fetch(`/api/leaderboard?days=${days}&limit=${limit}`);
+  const qs =
+    typeof days === 'number' && typeof limit === 'number'
+      ? `?days=${days}&limit=${limit}`
+      : '';
+  const res = await fetch(`/api/leaderboard${qs}`);
+  await ensureOk(res);
+  return res.json();
+}
+
+export async function searchProfiles(q: string, limit = 12): Promise<{
+  profiles: Array<Pick<Profile, 'username' | 'display_name' | 'avatar_url'>>;
+}> {
+  const res = await fetch(`/api/profiles?q=${encodeURIComponent(q)}&limit=${limit}`);
   await ensureOk(res);
   return res.json();
 }

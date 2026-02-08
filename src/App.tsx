@@ -21,6 +21,7 @@ export default function App() {
           <Route path="/card/:snapshotId" element={<CardPage />} />
           <Route path="/vault" element={<MyVault />} />
           <Route path="/vault/:username" element={<PublicVault />} />
+          <Route path="/@:username" element={<PublicVault />} />
         </Route>
       </Routes>
     </BrowserRouter>
