@@ -1,6 +1,15 @@
 import type { KPIs, Score } from '../../src/shared/types.ts';
+import { JSDOM } from 'jsdom';
+import createDOMPurify from 'dompurify';
 import { TIER_CONFIG, KPI_LABELS, CARD_WIDTH, CARD_HEIGHT } from '../../src/shared/constants.ts';
 import { formatNumber, shortId } from '../../src/shared/score.ts';
+
+const windowForPurify = new JSDOM('').window;
+const DOMPurify = createDOMPurify(windowForPurify);
+const BIO_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: [],
+  ALLOWED_ATTR: [],
+};
 
 export interface CardData {
   username: string;
@@ -31,10 +40,10 @@ export function buildCardHTML(data: CardData): string {
   const cardId = shortId(data.snapshotId);
   const ts = new Date(data.capturedAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
 
-  // Truncate bio to ~120 chars for card display
-  const bio = data.bio
-    ? (data.bio.length > 120 ? data.bio.slice(0, 117) + '...' : data.bio)
-    : '';
+  // Truncate bio to ~120 chars for card display, always sanitize
+  const rawBio = data.bio || '';
+  const cleanBio = DOMPurify.sanitize(rawBio, BIO_SANITIZE_CONFIG) || '';
+  const bio = cleanBio.length > 120 ? cleanBio.slice(0, 117) + '...' : cleanBio;
 
   const TAG_LABELS: Record<string, string> = { genesis: '1ST ED.', foil: 'HOLO' };
   const tagBadges = data.tags.map(t =>
