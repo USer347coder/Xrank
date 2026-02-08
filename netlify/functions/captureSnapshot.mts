@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.mts';
 import { jsonResponse, errorResponse, corsResponse, normalizeUsername } from '../lib/response.mts';
 import { fetchXProfile, type XProfileData } from '../lib/xProvider.mts';
 import { socialScoreV1, computeTags } from '../../src/shared/score.ts';
+import { renderCardForSnapshot } from './renderCard.mts';
 import { getUserIdFromRequest } from '../lib/auth.mts';
 import type { KPIs } from '../../src/shared/types.ts';
 
@@ -179,27 +180,17 @@ export default async (req: Request, _context: Context) => {
       console.warn('[captureSnapshot] Auto-vault error:', vaultEx);
     }
 
-    // 6. Trigger background render (Playwright). Background functions are reliable for long work.
+    // 6. Render card (await). Netlify V2 function routing does not expose /.netlify/functions,
+    // so background function invocation is unreliable here; awaiting is robust.
     try {
-      const origin = new URL(req.url).origin;
-      const renderBgUrl = `${origin}/.netlify/functions/renderCard-background`;
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const bgRes = await fetch(renderBgUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ snapshotId: snapshot.id }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      console.log('[captureSnapshot] Background render invoked', snapshot.id, bgRes.status);
+      console.log('[captureSnapshot] Render start', snapshot.id);
+      await renderCardForSnapshot(snapshot.id);
+      console.log('[captureSnapshot] Render complete', snapshot.id);
     } catch (err) {
-      console.warn('[captureSnapshot] Background render invoke failed', snapshot.id, err);
+      console.error('[captureSnapshot] Render failed', snapshot.id, err);
     }
 
-    // Try to fetch any assets already present (usually none; frontend will poll)
+    // Try to fetch any assets already present
     const { data: assetRows } = await supabaseAdmin
       .from('card_assets')
       .select('*')
