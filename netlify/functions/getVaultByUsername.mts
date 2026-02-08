@@ -19,13 +19,17 @@ export default async (req: Request) => {
     const username = normalizeUsername(rawUsername);
 
     // Find all matching profiles (case-insensitive) to tolerate historical duplicates.
-    const { data: profiles, error: profErr } = await supabaseAdmin
+    // Use a broad match then normalize in code so we also catch rows like "@elonmusk" or "elonmusk ".
+    const { data: profileCandidates, error: profErr } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('platform', 'x')
-      .ilike('username', username);
+      .ilike('username', `%${username}%`)
+      .limit(50);
 
-    if (profErr || !profiles || profiles.length === 0) {
+    const profiles = (profileCandidates || []).filter((p) => normalizeUsername(p.username) === username);
+
+    if (profErr || profiles.length === 0) {
       return errorResponse('Profile not found', 404);
     }
 
