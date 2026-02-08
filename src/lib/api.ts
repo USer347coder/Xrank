@@ -62,7 +62,7 @@ export async function getAssets(snapshotId: string): Promise<{ assets: CardAsset
 export async function getLeaderboard(
   days?: number,
   limit?: number
-): Promise<{ items: LeaderboardItem[] }> {
+): Promise<{ items: LeaderboardItem[]; window?: { start: string; end: string; label: string }; limit?: number; total?: number }> {
   const qs =
     typeof days === 'number' && typeof limit === 'number'
       ? `?days=${days}&limit=${limit}`

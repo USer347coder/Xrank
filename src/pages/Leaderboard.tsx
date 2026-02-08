@@ -23,6 +23,7 @@ const COMING_SOON = [
 
 export default function Leaderboard() {
   const [items, setItems] = useState<LeaderboardItem[]>([]);
+  const [windowLabel, setWindowLabel] = useState<string>('previous_month');
   const [loading, setLoading] = useState(false);
 
   async function load() {
@@ -30,6 +31,7 @@ export default function Leaderboard() {
     try {
       const res = await getLeaderboard();
       setItems(res.items || []);
+      setWindowLabel(res.window?.label || 'previous_month');
     } finally {
       setLoading(false);
     }
@@ -46,7 +48,12 @@ export default function Leaderboard() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
             <div className="text-xs font-bold tracking-[0.18em] opacity-90">RANKING BOARD</div>
-            <div className="text-xs opacity-50 mt-0.5">Top 100 from last month &middot; Updates monthly</div>
+            <div className="text-xs opacity-50 mt-0.5">
+              {windowLabel === 'current_month_so_far'
+                ? 'Top 100 this month so far'
+                : 'Top 100 from last month'}{' '}
+              &middot; Updates monthly
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
