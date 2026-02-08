@@ -34,6 +34,7 @@ export interface Profile {
   display_name: string | null;
   avatar_url: string | null;
   verified: boolean | null;
+  bio: string | null;
   created_at: string;
   last_fetched_at: string | null;
 }
@@ -45,6 +46,7 @@ export interface Snapshot {
   kpis: KPIs;
   score: Score;
   provenance: Record<string, unknown>;
+  card_number: number;
   created_at: string;
 }
 
@@ -58,15 +60,6 @@ export interface CardAsset {
   created_at: string;
 }
 
-export interface VaultEntry {
-  id: string;
-  owner_user_id: string;
-  snapshot_id: string;
-  visibility: 'public' | 'private' | 'unlisted';
-  tags: string[];
-  created_at: string;
-}
-
 // ── API response shapes ──
 export interface CaptureResult {
   profile: Profile;
@@ -75,16 +68,34 @@ export interface CaptureResult {
   tags: string[];
 }
 
-export interface VaultCard {
-  vaultEntry: Pick<VaultEntry, 'id' | 'visibility' | 'tags' | 'created_at'>;
+export interface LeaderboardCard {
   snapshot: Snapshot;
-  profile?: Profile;
+  profile: Profile;
   assets: CardAsset[];
 }
 
 export interface LeaderboardItem {
   rank: number;
+  total: number;
   snapshot: Snapshot;
   profile: Profile;
+  assets: CardAsset[];
+}
+
+// ── Vault ──
+export interface VaultEntry {
+  id: string;
+  owner_user_id: string | null;
+  owner_profile_id: string | null;
+  snapshot_id: string;
+  visibility: 'public' | 'private' | 'unlisted';
+  tags: string[];
+  created_at: string;
+}
+
+export interface VaultCard {
+  vaultEntry: Pick<VaultEntry, 'id' | 'visibility' | 'tags' | 'created_at'> | null;
+  snapshot: Snapshot;
+  profile?: Profile;
   assets: CardAsset[];
 }

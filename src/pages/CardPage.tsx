@@ -6,6 +6,18 @@ import { TIER_CONFIG, KPI_LABELS } from '../shared/constants';
 import { formatNumber, shortId } from '../shared/score';
 import type { TierName } from '../shared/types';
 
+function buildTweetText(username: string, score: number, tier: string, cardNumber: number, cardUrl: string) {
+  return [
+    `\u{1F3B4} Just minted a ${tier.toUpperCase()} Social Score Card!`,
+    '',
+    `@${username} \u00B7 Score ${score}/100 \u00B7 Edition #${cardNumber}`,
+    '',
+    `Mint yours \u2192 ${cardUrl}`,
+    '',
+    '#SocialScore #XRank',
+  ].join('\n');
+}
+
 export default function CardPage() {
   const { snapshotId } = useParams();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -42,6 +54,18 @@ export default function CardPage() {
   const tier = snapshot?.score?.tier as TierName | undefined;
   const tierCfg = tier ? TIER_CONFIG[tier] : null;
 
+  function shareOnX() {
+    if (!snapshot || !profile) return;
+    const text = buildTweetText(
+      profile.username,
+      snapshot.score.value,
+      snapshot.score.tier,
+      snapshot.card_number,
+      shareUrl,
+    );
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -77,13 +101,35 @@ export default function CardPage() {
             {tierCfg?.label}
           </span>
           <span className="px-2.5 py-1 rounded-lg border border-white/15 bg-white/5 text-[10px] font-black tracking-[0.16em]">
-            CARD {cardId}
+            EDITION #{snapshot.card_number}
           </span>
+          <span className="px-2.5 py-1 rounded-lg border border-white/15 bg-white/5 text-[10px] font-black tracking-[0.16em]">
+            ID {cardId}
+          </span>
+          {(() => {
+            const src = (snapshot.provenance as any)?.source;
+            const isMock = src === 'mock';
+            const isCached = src === 'cached';
+            const color = isMock ? '#FF6B35' : isCached ? '#00AAFF' : '#00FF88';
+            const label = isMock ? 'MOCK DATA' : isCached ? 'CACHED DATA' : 'LIVE DATA';
+            return (
+              <span
+                className="px-2.5 py-1 rounded-lg border text-[10px] font-black tracking-[0.16em]"
+                style={{
+                  borderColor: color,
+                  color: color,
+                  background: `${color}14`,
+                }}
+              >
+                {label}
+              </span>
+            );
+          })()}
         </div>
 
         <div className="text-sm font-mono opacity-70">@{profile.username}</div>
         <div className="text-[11px] font-mono opacity-50">
-          Captured: {new Date(snapshot.captured_at).toISOString().replace('T', ' ').slice(0, 16)} UTC
+          Minted: {new Date(snapshot.captured_at).toISOString().replace('T', ' ').slice(0, 16)} UTC
         </div>
 
         {/* KPIs */}
@@ -100,21 +146,21 @@ export default function CardPage() {
 
         {/* Share */}
         <div className="border-t border-white/8 pt-3">
-          <div className="text-[10px] font-bold tracking-[0.16em] opacity-50 mb-2">SHARE URL</div>
-          <div className="text-xs font-mono opacity-60 break-all">{shareUrl}</div>
-          <div className="flex gap-2 mt-3 flex-wrap">
+          <div className="text-[10px] font-bold tracking-[0.16em] opacity-50 mb-2">SHARE</div>
+          <div className="text-xs font-mono opacity-60 break-all mb-3">{shareUrl}</div>
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => navigator.clipboard.writeText(shareUrl)}
               className="px-3.5 py-2 rounded-xl border border-white/15 bg-white/5 text-xs font-bold tracking-[0.14em] hover:bg-white/10 transition"
             >
               COPY LINK
             </button>
-            <Link
-              to={`/vault/${profile.username}`}
-              className="px-3.5 py-2 rounded-xl border border-white/15 bg-white/5 text-xs font-bold tracking-[0.14em] hover:bg-white/10 transition"
+            <button
+              onClick={shareOnX}
+              className="px-3.5 py-2 rounded-xl border border-white/25 bg-white/10 text-xs font-bold tracking-[0.14em] hover:bg-white/20 transition"
             >
-              OPEN VAULT
-            </Link>
+              SHARE ON X
+            </button>
           </div>
         </div>
 
@@ -142,11 +188,11 @@ export default function CardPage() {
       {/* Right: Preview + QR */}
       <div className="space-y-5">
         <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
-          <div className="text-xs font-bold tracking-[0.18em] opacity-90 mb-3">PREVIEW</div>
+          <div className="text-xs font-bold tracking-[0.18em] opacity-90 mb-3">YOUR CARD</div>
           {pngUrl ? (
             <img src={pngUrl} alt="Card" className="w-full rounded-2xl border border-white/10" />
           ) : (
-            <div className="aspect-[16/10] rounded-2xl border border-dashed border-white/8 flex items-center justify-center text-xs opacity-30">
+            <div className="aspect-[5/7] rounded-2xl border border-dashed border-white/8 flex items-center justify-center text-xs opacity-30">
               No PNG available
             </div>
           )}

@@ -37,8 +37,8 @@ export const TIER_CONFIG: Record<TierName, { label: string; color: string; glow:
 };
 
 // ── Card dimensions ──
-export const CARD_WIDTH = 900;
-export const CARD_HEIGHT = 560;
+export const CARD_WIDTH = 630;
+export const CARD_HEIGHT = 880;
 
 // ── KPI display order + labels ──
 export const KPI_LABELS: { key: keyof import('./types.ts').KPIs; label: string }[] = [

@@ -1,24 +1,44 @@
-import { useState, useMemo, useCallback } from 'react';
-import { captureSnapshot, saveToVault, getAssets } from '../lib/api';
-import { useAuth } from '../hooks/useAuth';
-import AuthForm from '../components/AuthForm';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { captureSnapshot, getAssets } from '../lib/api';
 import type { CaptureResult, CardAsset } from '../shared/types';
 import { TIER_CONFIG } from '../shared/constants';
 import type { TierName } from '../shared/types';
 
+const TAG_DISPLAY: Record<string, { label: string; color: string }> = {
+  genesis: { label: 'FIRST EDITION', color: '#00FFAA' },
+  foil: { label: 'HOLOGRAPHIC', color: '#FFD700' },
+};
+
+function buildTweetText(username: string, score: number, tier: string, cardNumber: number, snapshotId: string) {
+  const cardUrl = `${window.location.origin}/card/${snapshotId}`;
+  return [
+    `\u{1F3B4} Just minted a ${tier.toUpperCase()} Social Score Card!`,
+    '',
+    `@${username} \u00B7 Score ${score}/100 \u00B7 Edition #${cardNumber}`,
+    '',
+    `Mint yours \u2192 ${cardUrl}`,
+    '',
+    '#SocialScore #XRank',
+  ].join('\n');
+}
+
 export default function Home() {
-  const { user } = useAuth();
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<CaptureResult | null>(null);
   const [assets, setAssets] = useState<CardAsset[]>([]);
-  const [visibility, setVisibility] = useState<'public' | 'private' | 'unlisted'>('public');
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
+  const cancelled = useRef(false);
 
   const pngUrl = useMemo(() => assets.find((a) => a.format === 'png')?.url, [assets]);
   const pdfUrl = useMemo(() => assets.find((a) => a.format === 'pdf')?.url, [assets]);
+
+  useEffect(() => {
+    return () => {
+      cancelled.current = true;
+    };
+  }, []);
 
   // Poll for assets after capture (card renders in background)
   const pollAssets = useCallback(async (snapshotId: string) => {
@@ -32,8 +52,10 @@ export default function Home() {
       try {
         const res = await getAssets(snapshotId);
         if (res.assets && res.assets.length > 0) {
-          setAssets(res.assets);
-          setPolling(false);
+          if (!cancelled.current) {
+            setAssets(res.assets);
+            setPolling(false);
+          }
           return;
         }
       } catch {}
@@ -41,16 +63,15 @@ export default function Home() {
       if (attempts < maxAttempts) {
         setTimeout(poll, interval);
       } else {
-        setPolling(false);
+        if (!cancelled.current) setPolling(false);
       }
     };
 
-    setTimeout(poll, 3000); // Initial delay before first poll
+    setTimeout(poll, 3000);
   }, []);
 
   async function onCapture() {
     setError(null);
-    setSaveMsg(null);
     setBusy(true);
     setData(null);
     setAssets([]);
@@ -65,7 +86,7 @@ export default function Home() {
       // If assets came back immediately, use them
       if (res.assets && res.assets.length > 0) {
         setAssets(res.assets);
-      } else {
+      } else if (res.snapshot?.id) {
         // Poll for background render
         pollAssets(res.snapshot.id);
       }
@@ -76,29 +97,29 @@ export default function Home() {
     }
   }
 
-  async function onSave() {
-    setSaveMsg(null);
-    if (!data?.snapshot?.id) return;
-    if (!user) {
-      setSaveMsg('Please login first.');
-      return;
-    }
-    const res = await saveToVault(data.snapshot.id, visibility);
-    if (res.error) setSaveMsg(res.error);
-    else setSaveMsg('Saved to vault!');
-  }
-
   const tier = data?.snapshot?.score?.tier as TierName | undefined;
   const tierCfg = tier ? TIER_CONFIG[tier] : null;
 
+  function shareOnX() {
+    if (!data?.snapshot || !data?.profile) return;
+    const text = buildTweetText(
+      data.profile.username,
+      data.snapshot.score.value,
+      data.snapshot.score.tier,
+      data.snapshot.card_number,
+      data.snapshot.id,
+    );
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+  }
+
   return (
     <div className="grid lg:grid-cols-2 gap-5">
-      {/* Left: Capture */}
+      {/* Left: Mint */}
       <div className="space-y-5">
         <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
-          <div className="text-xs font-bold tracking-[0.18em] opacity-90 mb-1">CAPTURE</div>
+          <div className="text-xs font-bold tracking-[0.18em] opacity-90 mb-1">MINT</div>
           <div className="text-xs opacity-50 mb-4">
-            Enter an X username &rarr; snapshot &rarr; score &rarr; collectible card
+            Enter an X handle &rarr; mint a scored collectible card
           </div>
 
           <div className="space-y-3">
@@ -114,7 +135,7 @@ export default function Home() {
               disabled={busy || username.trim().length < 2}
               className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/5 text-xs font-bold tracking-[0.16em] hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {busy ? 'CAPTURING...' : 'CAPTURE SNAPSHOT'}
+              {busy ? 'MINTING...' : 'MINT CARD'}
             </button>
           </div>
 
@@ -145,27 +166,52 @@ export default function Home() {
                 >
                   {tierCfg?.label}
                 </span>
-                {data.tags.map((t) => (
-                  <span
-                    key={t}
-                    className="px-2.5 py-1 rounded-lg border text-[10px] font-black tracking-[0.16em] uppercase"
+                <span className="px-2.5 py-1 rounded-lg border border-white/15 bg-white/5 text-[10px] font-black tracking-[0.16em]">
+                  EDITION #{data.snapshot.card_number}
+                </span>
+                {data.tags.map((t) => {
+                  const display = TAG_DISPLAY[t] || { label: t.toUpperCase(), color: 'rgba(255,255,255,0.6)' };
+                  return (
+                    <span
+                      key={t}
+                      className="px-2.5 py-1 rounded-lg border text-[10px] font-black tracking-[0.16em]"
+                      style={{
+                        borderColor: display.color,
+                        color: display.color,
+                      }}
+                    >
+                      {display.label}
+                    </span>
+                  );
+                })}
+              </div>
+
+              {/* Data source + Snapshot info */}
+              {(() => {
+                const src = (data.snapshot.provenance as any)?.source;
+                const isMock = src === 'mock';
+                const isCached = src === 'cached';
+                const color = isMock ? '#FF6B35' : isCached ? '#00AAFF' : '#00FF88';
+                const label = isMock ? 'MOCK DATA' : isCached ? 'CACHED DATA' : 'LIVE DATA';
+                return (
+                  <div
+                    className="px-2.5 py-1 rounded-lg border text-[10px] font-black tracking-[0.16em]"
                     style={{
-                      borderColor: t === 'foil' ? '#FFD700' : t === 'genesis' ? '#00FFAA' : 'rgba(255,255,255,0.15)',
-                      color: t === 'foil' ? '#FFD700' : t === 'genesis' ? '#00FFAA' : 'rgba(255,255,255,0.6)',
+                      borderColor: color,
+                      color: color,
+                      background: `${color}14`,
                     }}
                   >
-                    {t}
-                  </span>
-                ))}
-              </div>
-
-              {/* Snapshot info */}
+                    {label}
+                  </div>
+                );
+              })()}
               <div className="text-[11px] font-mono opacity-50 space-y-1">
                 <div>ID: {data.snapshot.id}</div>
-                <div>Captured: {new Date(data.snapshot.captured_at).toISOString().replace('T', ' ').slice(0, 16)} UTC</div>
+                <div>Minted: {new Date(data.snapshot.captured_at).toISOString().replace('T', ' ').slice(0, 16)} UTC</div>
               </div>
 
-              {/* Downloads */}
+              {/* Downloads + Share */}
               <div className="border-t border-white/8 pt-3 flex flex-wrap gap-2">
                 <a
                   href={pngUrl || '#'}
@@ -173,7 +219,7 @@ export default function Home() {
                   rel="noreferrer"
                   className={`px-3.5 py-2 rounded-xl border border-white/15 bg-white/5 text-xs font-bold tracking-[0.14em] hover:bg-white/10 transition ${!pngUrl ? 'opacity-40 pointer-events-none' : ''}`}
                 >
-                  {pngUrl ? 'DOWNLOAD PNG' : polling ? 'RENDERING...' : 'PNG N/A'}
+                  {pngUrl ? 'DOWNLOAD PNG' : polling ? 'MINTING...' : 'PNG N/A'}
                 </a>
                 <a
                   href={pdfUrl || '#'}
@@ -181,42 +227,27 @@ export default function Home() {
                   rel="noreferrer"
                   className={`px-3.5 py-2 rounded-xl border border-white/15 bg-white/5 text-xs font-bold tracking-[0.14em] hover:bg-white/10 transition ${!pdfUrl ? 'opacity-40 pointer-events-none' : ''}`}
                 >
-                  {pdfUrl ? 'DOWNLOAD PDF' : polling ? 'RENDERING...' : 'PDF N/A'}
+                  {pdfUrl ? 'DOWNLOAD PDF' : polling ? 'MINTING...' : 'PDF N/A'}
                 </a>
-              </div>
-
-              {/* Save to vault */}
-              <div className="border-t border-white/8 pt-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <select
-                    value={visibility}
-                    onChange={(e) => setVisibility(e.target.value as any)}
-                    className="px-3 py-2 rounded-xl border border-white/15 bg-black/30 text-xs text-white outline-none"
-                  >
-                    <option value="public">public</option>
-                    <option value="unlisted">unlisted</option>
-                    <option value="private">private</option>
-                  </select>
-                  <button
-                    onClick={onSave}
-                    className="px-3.5 py-2 rounded-xl border border-white/15 bg-white/5 text-xs font-bold tracking-[0.14em] hover:bg-white/10 transition"
-                  >
-                    SAVE TO VAULT
-                  </button>
-                </div>
-                {saveMsg && (
-                  <div className="mt-2 text-xs font-mono opacity-70">{saveMsg}</div>
-                )}
+                <button
+                  onClick={shareOnX}
+                  className="px-3.5 py-2 rounded-xl border border-white/25 bg-white/10 text-xs font-bold tracking-[0.14em] hover:bg-white/20 transition"
+                >
+                  SHARE ON X
+                </button>
+                <span className="px-3.5 py-2 rounded-xl border border-green-500/30 bg-green-500/10 text-green-400 text-xs font-bold tracking-[0.14em]">
+                  AUTO-SAVED TO VAULT
+                </span>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Right: Preview + Auth */}
+      {/* Right: Your Card */}
       <div className="space-y-5">
         <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
-          <div className="text-xs font-bold tracking-[0.18em] opacity-90 mb-1">PREVIEW</div>
+          <div className="text-xs font-bold tracking-[0.18em] opacity-90 mb-1">YOUR CARD</div>
           <div className="text-xs opacity-50 mb-4">Your generated collectible card</div>
 
           {pngUrl ? (
@@ -226,21 +257,19 @@ export default function Home() {
               className="w-full rounded-2xl border border-white/10"
             />
           ) : polling ? (
-            <div className="aspect-[16/10] rounded-2xl border border-white/8 bg-white/[0.02] flex items-center justify-center">
+            <div className="aspect-[5/7] rounded-2xl border border-white/8 bg-white/[0.02] flex items-center justify-center">
               <div className="text-xs font-bold tracking-[0.16em] opacity-40 animate-pulse">
-                GENERATING CARD...
+                MINTING...
               </div>
             </div>
           ) : (
-            <div className="aspect-[16/10] rounded-2xl border border-dashed border-white/8 flex items-center justify-center">
+            <div className="aspect-[5/7] rounded-2xl border border-dashed border-white/8 flex items-center justify-center">
               <div className="text-xs opacity-30 tracking-wider text-center px-8">
-                Capture a snapshot to see your collectible card preview here.
+                Mint a card to see your collectible here.
               </div>
             </div>
           )}
         </div>
-
-        <AuthForm />
       </div>
     </div>
   );

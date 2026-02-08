@@ -2,7 +2,7 @@ import { chromium as playwright } from 'playwright-core';
 import type { Browser } from 'playwright-core';
 
 const CHROMIUM_PACK_URL =
-  'https://github.com/nichochar/chromium-for-lambda/releases/download/v133.0.0/chromium-v133.0.0-pack.tar';
+  'https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar';
 
 /**
  * Launch a headless Chromium browser.

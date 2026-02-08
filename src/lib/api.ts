@@ -1,11 +1,28 @@
+import type { CaptureResult, CardAsset, Profile, Snapshot, LeaderboardItem, VaultCard } from '../shared/types';
 import { supabase } from './supabase';
-import type { CaptureResult, VaultCard, LeaderboardItem, CardAsset, Profile, Snapshot } from '../shared/types';
 
+async function parseJsonSafe(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function ensureOk(res: Response) {
+  if (res.ok) return res;
+  const parsed = await parseJsonSafe(res);
+  const msg = (parsed as any)?.error || res.statusText || 'Request failed';
+  throw new Error(msg);
+}
+
+// ── Auth helper ──
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (data.session?.access_token) {
+    headers['Authorization'] = `Bearer ${data.session.access_token}`;
+  }
   return headers;
 }
 
@@ -17,6 +34,7 @@ export async function captureSnapshot(username: string): Promise<CaptureResult> 
     headers,
     body: JSON.stringify({ username }),
   });
+  await ensureOk(res);
   return res.json();
 }
 
@@ -29,12 +47,24 @@ export async function getCard(snapshotId: string): Promise<{
   qrUrl: string;
 }> {
   const res = await fetch(`/api/card/${snapshotId}`);
+  await ensureOk(res);
   return res.json();
 }
 
 // ── Assets ──
 export async function getAssets(snapshotId: string): Promise<{ assets: CardAsset[] }> {
   const res = await fetch(`/api/assets/${snapshotId}`);
+  await ensureOk(res);
+  return res.json();
+}
+
+// ── Leaderboard ──
+export async function getLeaderboard(
+  days = 7,
+  limit = 24
+): Promise<{ items: LeaderboardItem[] }> {
+  const res = await fetch(`/api/leaderboard?days=${days}&limit=${limit}`);
+  await ensureOk(res);
   return res.json();
 }
 
@@ -49,12 +79,14 @@ export async function saveToVault(
     headers,
     body: JSON.stringify({ snapshotId, visibility }),
   });
+  await ensureOk(res);
   return res.json();
 }
 
 export async function getMyVault(): Promise<{ cards: VaultCard[] }> {
   const headers = await getAuthHeaders();
   const res = await fetch('/api/my-vault', { headers });
+  await ensureOk(res);
   return res.json();
 }
 
@@ -62,14 +94,6 @@ export async function getVaultByUsername(
   username: string
 ): Promise<{ profile: Profile; cards: VaultCard[] }> {
   const res = await fetch(`/api/vault/${encodeURIComponent(username)}`);
-  return res.json();
-}
-
-// ── Leaderboard ──
-export async function getLeaderboard(
-  days = 7,
-  limit = 24
-): Promise<{ items: LeaderboardItem[] }> {
-  const res = await fetch(`/api/leaderboard?days=${days}&limit=${limit}`);
+  await ensureOk(res);
   return res.json();
 }

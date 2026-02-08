@@ -1,8 +1,8 @@
 import { Link, Outlet } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Layout() {
-  const { user, signOut } = useAuth();
+  const { user, loading, signInWithX, signOut } = useAuth();
 
   return (
     <div className="min-h-screen bg-[#07080B] text-white">
@@ -23,29 +23,35 @@ export default function Layout() {
               to="/leaderboard"
               className="opacity-70 hover:opacity-100 transition px-2 py-1"
             >
-              LEADERBOARD
+              RANKING BOARD
             </Link>
-            <Link
-              to="/vault"
-              className="opacity-70 hover:opacity-100 transition px-2 py-1"
-            >
-              MY VAULT
-            </Link>
-            {user ? (
+
+            {!loading && user ? (
+              <>
+                <Link
+                  to="/vault"
+                  className="opacity-70 hover:opacity-100 transition px-2 py-1"
+                >
+                  MY VAULT
+                </Link>
+                <button
+                  onClick={signOut}
+                  className="opacity-60 hover:opacity-100 transition px-2 py-1 text-red-400"
+                >
+                  SIGN OUT
+                </button>
+              </>
+            ) : !loading ? (
               <button
-                onClick={signOut}
-                className="opacity-60 hover:opacity-100 transition px-2 py-1 text-red-400"
+                onClick={signInWithX}
+                className="px-3 py-1.5 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 transition flex items-center gap-2"
               >
-                SIGN OUT
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                SIGN IN
               </button>
-            ) : (
-              <Link
-                to="/vault"
-                className="px-3 py-1.5 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 transition"
-              >
-                LOGIN
-              </Link>
-            )}
+            ) : null}
           </nav>
         </div>
       </header>
@@ -57,7 +63,7 @@ export default function Layout() {
 
       {/* Footer */}
       <footer className="mx-auto max-w-6xl px-4 pb-10 pt-4 text-xs opacity-40 tracking-wider">
-        Social Score Vault &mdash; Snapshot-based collectible cards &middot; 6 KPIs &middot; Score v1
+        Social Score Vault &mdash; Mint &middot; Collect &middot; Rank &middot; 6 KPIs &middot; Score v1
       </footer>
     </div>
   );

@@ -1,9 +1,10 @@
 import type { Config, Context } from '@netlify/functions';
 import { supabaseAdmin } from '../lib/supabaseAdmin.mts';
 import { jsonResponse, errorResponse, corsResponse, normalizeUsername } from '../lib/response.mts';
-import { fetchXProfile } from '../lib/xProvider.mts';
+import { fetchXProfile, type XProfileData } from '../lib/xProvider.mts';
 import { socialScoreV1, computeTags } from '../../src/shared/score.ts';
-import { renderCardForSnapshot } from './renderCard.mts';
+import { getUserIdFromRequest } from '../lib/auth.mts';
+import type { KPIs } from '../../src/shared/types.ts';
 
 export const config: Config = {
   path: '/api/capture-snapshot',
@@ -14,6 +15,9 @@ export default async (req: Request, _context: Context) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
   try {
+    // Optional auth — don't fail if not signed in
+    const userId = await getUserIdFromRequest(req);
+
     const body = await req.json();
     const rawUsername = body?.username;
     if (!rawUsername || typeof rawUsername !== 'string') {
@@ -22,21 +26,72 @@ export default async (req: Request, _context: Context) => {
 
     const username = normalizeUsername(rawUsername);
 
-    // 1. Fetch X profile data (mock or real)
-    const xData = await fetchXProfile(username);
+    // 1. Check cache — skip X API if profile was fetched within 24h
+    const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-    // 2. Upsert profile row
+    const { data: existingProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('platform', 'x')
+      .eq('username', username)
+      .single();
+
+    let xData: XProfileData;
+
+    if (
+      existingProfile?.last_fetched_at &&
+      Date.now() - new Date(existingProfile.last_fetched_at).getTime() < CACHE_TTL_MS
+    ) {
+      // Fresh data in cache — look up latest snapshot's KPIs
+      const { data: latestSnap } = await supabaseAdmin
+        .from('snapshots')
+        .select('kpis')
+        .eq('profile_id', existingProfile.id)
+        .order('captured_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (latestSnap?.kpis) {
+        xData = {
+          username: existingProfile.username,
+          displayName: existingProfile.display_name || existingProfile.username,
+          avatarUrl: existingProfile.avatar_url || `https://unavatar.io/x/${username}`,
+          verified: existingProfile.verified || false,
+          bio: existingProfile.bio || '',
+          kpis: latestSnap.kpis as KPIs,
+          source: 'cached',
+          sourceDetail: `last_fetched ${existingProfile.last_fetched_at}`,
+        };
+        console.log(`[captureSnapshot] Cache HIT for @${username} — skipping X API (fetched ${existingProfile.last_fetched_at})`);
+      } else {
+        // Profile exists but no snapshots — fetch fresh
+        xData = await fetchXProfile(username);
+      }
+    } else {
+      // No profile or stale — fetch from X API
+      xData = await fetchXProfile(username);
+    }
+
+    console.log(`[captureSnapshot] Data source: ${xData.source}${xData.sourceDetail ? ` (${xData.sourceDetail})` : ''}`);
+    console.log(`[captureSnapshot] KPIs for @${username}:`, JSON.stringify(xData.kpis));
+
+    // 2. Upsert profile row (only update last_fetched_at for fresh fetches)
+    const profileUpsertData: Record<string, unknown> = {
+      platform: 'x',
+      username: xData.username.toLowerCase(),
+      display_name: xData.displayName,
+      avatar_url: xData.avatarUrl,
+      verified: xData.verified,
+      bio: xData.bio || '',
+    };
+    if (xData.source !== 'cached') {
+      profileUpsertData.last_fetched_at = new Date().toISOString();
+    }
+
     const { data: profile, error: profErr } = await supabaseAdmin
       .from('profiles')
       .upsert(
-        {
-          platform: 'x',
-          username: xData.username.toLowerCase(),
-          display_name: xData.displayName,
-          avatar_url: xData.avatarUrl,
-          verified: xData.verified,
-          last_fetched_at: new Date().toISOString(),
-        },
+        profileUpsertData,
         { onConflict: 'platform,username' }
       )
       .select('*')
@@ -49,13 +104,14 @@ export default async (req: Request, _context: Context) => {
     // 3. Compute score
     const score = socialScoreV1(xData.kpis);
 
-    // 4. Check for previous snapshots (for tags)
+    // 4. Check for previous snapshots (for tags + card_number)
     const { count: existingCount } = await supabaseAdmin
       .from('snapshots')
       .select('id', { count: 'exact', head: true })
       .eq('profile_id', profile.id);
 
-    const isFirstSnapshot = !existingCount || existingCount === 0;
+    const cardNumber = (existingCount || 0) + 1;
+    const isFirstSnapshot = cardNumber === 1;
 
     // Get previous score for foil detection
     let previousScore: number | null = null;
@@ -76,7 +132,7 @@ export default async (req: Request, _context: Context) => {
     const capturedAt = new Date();
     const tags = computeTags(score, previousScore, isFirstSnapshot, capturedAt);
 
-    // 5. Insert snapshot
+    // 5. Insert snapshot with card_number
     const { data: snapshot, error: snapErr } = await supabaseAdmin
       .from('snapshots')
       .insert({
@@ -84,8 +140,10 @@ export default async (req: Request, _context: Context) => {
         captured_at: capturedAt.toISOString(),
         kpis: xData.kpis,
         score,
+        card_number: cardNumber,
         provenance: {
-          source: process.env.X_BEARER_TOKEN ? 'x_api' : 'mock',
+          source: xData.source,
+          sourceDetail: xData.sourceDetail,
           tags,
         },
       })
@@ -96,17 +154,62 @@ export default async (req: Request, _context: Context) => {
       return errorResponse(`Snapshot insert failed: ${snapErr?.message}`, 500);
     }
 
-    // 6. Render card — fire and forget (don't await, let it run)
-    // Use void to explicitly mark as intentionally not awaited
-    void renderCardForSnapshot(snapshot.id).catch((err) => {
-      console.error('[captureSnapshot] Background card render failed:', err);
-    });
+    // 5b. Auto-save to vault
+    try {
+      const vaultData: Record<string, unknown> = {
+        snapshot_id: snapshot.id,
+        visibility: 'public',
+        tags: [],
+      };
 
-    // 7. Return immediately with snapshot data
+      if (userId) {
+        vaultData.owner_user_id = userId;
+      } else {
+        vaultData.owner_profile_id = profile.id;
+      }
+
+      const { error: vaultErr } = await supabaseAdmin
+        .from('vault_entries')
+        .insert(vaultData);
+
+      if (vaultErr) {
+        console.warn('[captureSnapshot] Auto-vault insert failed:', vaultErr.message);
+      }
+    } catch (vaultEx) {
+      console.warn('[captureSnapshot] Auto-vault error:', vaultEx);
+    }
+
+    // 6. Trigger background render (Playwright). Background functions are reliable for long work.
+    try {
+      const origin = new URL(req.url).origin;
+      const renderBgUrl = `${origin}/.netlify/functions/renderCard-background`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const bgRes = await fetch(renderBgUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ snapshotId: snapshot.id }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      console.log('[captureSnapshot] Background render invoked', snapshot.id, bgRes.status);
+    } catch (err) {
+      console.warn('[captureSnapshot] Background render invoke failed', snapshot.id, err);
+    }
+
+    // Try to fetch any assets already present (usually none; frontend will poll)
+    const { data: assetRows } = await supabaseAdmin
+      .from('card_assets')
+      .select('*')
+      .eq('snapshot_id', snapshot.id);
+
+    // 7. Return with snapshot data + any existing assets; frontend will poll
     return jsonResponse({
       profile,
       snapshot,
-      assets: [], // will be available after background render completes
+      assets: assetRows || [],
       tags,
     });
   } catch (e: unknown) {

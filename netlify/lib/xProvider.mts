@@ -5,7 +5,10 @@ export interface XProfileData {
   displayName: string;
   avatarUrl: string;
   verified: boolean;
+  bio: string;
   kpis: KPIs;
+  source: 'x_api' | 'mock' | 'cached';
+  sourceDetail?: string; // e.g. "402 CreditsDepleted"
 }
 
 /**
@@ -28,7 +31,7 @@ function seeded(seed: number, min: number, max: number): number {
 /**
  * Generate deterministic mock data for a given username.
  */
-function mockXProfile(username: string): XProfileData {
+function mockXProfile(username: string, detail?: string): XProfileData {
   const h = hashStr(username);
 
   const followers = Math.round(seeded(h, 100, 5_000_000));
@@ -43,7 +46,10 @@ function mockXProfile(username: string): XProfileData {
     displayName: username.charAt(0).toUpperCase() + username.slice(1),
     avatarUrl: `https://unavatar.io/x/${username}`,
     verified: followers > 1_000_000,
+    bio: `Content creator & digital native. Building in public.`,
     kpis: { followers, following, posts, listed, avgEngPerPost, velocity7d },
+    source: 'mock',
+    sourceDetail: detail || 'no_token',
   };
 }
 
@@ -56,31 +62,42 @@ export async function fetchXProfile(username: string): Promise<XProfileData> {
 
   if (!token) {
     console.log(`[xProvider] No X_BEARER_TOKEN — using mock data for @${username}`);
-    return mockXProfile(username);
+    return mockXProfile(username, 'no_token');
   }
 
   // ── Real X API v2 ──
   try {
     // Fetch user info
-    const userRes = await fetch(
-      `https://api.twitter.com/2/users/by/username/${username}?user.fields=public_metrics,verified,profile_image_url,name`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    const userUrl = `https://api.twitter.com/2/users/by/username/${username}?user.fields=public_metrics,verified,profile_image_url,name,description`;
+    console.log(`[xProvider] Fetching X API: ${userUrl.split('?')[0]}`);
+
+    const userRes = await fetch(userUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    console.log(`[xProvider] X API response: ${userRes.status} ${userRes.statusText}`);
 
     if (!userRes.ok) {
-      console.warn(`[xProvider] X API user lookup failed (${userRes.status}), falling back to mock`);
-      return mockXProfile(username);
+      let detail = `${userRes.status}`;
+      try {
+        const errBody = await userRes.json();
+        detail = `${userRes.status} ${errBody.title || errBody.detail || userRes.statusText}`;
+        console.error(`[xProvider] X API error body:`, JSON.stringify(errBody));
+      } catch {}
+      console.warn(`[xProvider] X API lookup failed (${detail}), falling back to mock`);
+      return mockXProfile(username, detail);
     }
 
     const userData = await userRes.json();
     const user = userData.data;
 
     if (!user) {
-      console.warn(`[xProvider] User not found, falling back to mock`);
-      return mockXProfile(username);
+      console.warn(`[xProvider] User not found in response, falling back to mock`);
+      return mockXProfile(username, 'user_not_found');
     }
 
     const pm = user.public_metrics || {};
+    console.log(`[xProvider] Raw public_metrics for @${username}:`, JSON.stringify(pm));
 
     // Fetch recent tweets for engagement + velocity
     const tweetsRes = await fetch(
@@ -94,6 +111,7 @@ export async function fetchXProfile(username: string): Promise<XProfileData> {
     if (tweetsRes.ok) {
       const tweetsData = await tweetsRes.json();
       const tweets = tweetsData.data || [];
+      console.log(`[xProvider] Fetched ${tweets.length} tweets for engagement calc`);
 
       if (tweets.length > 0) {
         let totalEng = 0;
@@ -111,7 +129,19 @@ export async function fetchXProfile(username: string): Promise<XProfileData> {
 
         avgEngPerPost = Math.round(totalEng / tweets.length);
       }
+    } else {
+      console.warn(`[xProvider] Tweets fetch failed: ${tweetsRes.status}`);
     }
+
+    const kpis = {
+      followers: pm.followers_count || 0,
+      following: pm.following_count || 0,
+      posts: pm.tweet_count || 0,
+      listed: pm.listed_count || 0,
+      avgEngPerPost,
+      velocity7d,
+    };
+    console.log(`[xProvider] Final KPIs for @${username}:`, JSON.stringify(kpis));
 
     return {
       username: user.username || username,
@@ -119,17 +149,12 @@ export async function fetchXProfile(username: string): Promise<XProfileData> {
       avatarUrl: user.profile_image_url?.replace('_normal', '_400x400') ||
                  `https://unavatar.io/x/${username}`,
       verified: user.verified || false,
-      kpis: {
-        followers: pm.followers_count || 0,
-        following: pm.following_count || 0,
-        posts: pm.tweet_count || 0,
-        listed: pm.listed_count || 0,
-        avgEngPerPost,
-        velocity7d,
-      },
+      bio: user.description || '',
+      kpis,
+      source: 'x_api',
     };
   } catch (err) {
     console.error('[xProvider] X API error, falling back to mock:', err);
-    return mockXProfile(username);
+    return mockXProfile(username, `exception: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

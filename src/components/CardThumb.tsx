@@ -12,7 +12,7 @@ export default function CardThumb({ card }: { card: VaultCard }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 overflow-hidden group hover:border-white/20 transition">
       <Link to={`/card/${card.snapshot.id}`} className="block">
-        <div className="aspect-[16/10] bg-white/[0.03] relative overflow-hidden">
+        <div className="aspect-[5/7] bg-white/[0.03] relative overflow-hidden">
           {pngUrl ? (
             <img
               src={pngUrl}

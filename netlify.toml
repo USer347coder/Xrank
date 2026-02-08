@@ -9,6 +9,9 @@
 [functions.renderCard]
   external_node_modules = ["@sparticuz/chromium-min", "playwright-core"]
 
+[functions."renderCard-background"]
+  external_node_modules = ["@sparticuz/chromium-min", "playwright-core"]
+
 [functions.captureSnapshot]
   external_node_modules = ["@sparticuz/chromium-min", "playwright-core"]
 

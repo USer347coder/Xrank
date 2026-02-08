@@ -5,6 +5,21 @@ import { buildCardHTML, type CardData } from '../lib/cardTemplate.mts';
 import { generateQrDataUri } from '../lib/qr.mts';
 import { launchBrowser } from '../lib/chromium.mts';
 import { CARD_WIDTH, CARD_HEIGHT } from '../../src/shared/constants.ts';
+import type { Browser } from 'playwright-core';
+
+let browserPromise: Promise<Browser> | null = null;
+
+async function getBrowser() {
+  if (!browserPromise) {
+    browserPromise = launchBrowser();
+  }
+  try {
+    return await browserPromise;
+  } catch (err) {
+    browserPromise = null;
+    throw err;
+  }
+}
 
 export const config: Config = {
   path: '/api/render-card',
@@ -34,11 +49,14 @@ async function renderCardForSnapshot(snapshotId: string): Promise<{ pngUrl: stri
 
   if (profErr || !prof) throw new Error(`Profile not found: ${profErr?.message}`);
 
-  // 2. Fetch avatar as base64
+  // 2. Fetch avatar as base64 (fast timeout)
   let avatarBase64: string | null = null;
   if (prof.avatar_url) {
     try {
-      const avatarRes = await fetch(prof.avatar_url);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const avatarRes = await fetch(prof.avatar_url, { signal: controller.signal });
+      clearTimeout(timeout);
       if (avatarRes.ok) {
         const buf = await avatarRes.arrayBuffer();
         const ct = avatarRes.headers.get('content-type') || 'image/jpeg';
@@ -58,38 +76,48 @@ async function renderCardForSnapshot(snapshotId: string): Promise<{ pngUrl: stri
   const cardData: CardData = {
     username: prof.username,
     displayName: prof.display_name || prof.username,
+    bio: prof.bio || '',
     avatarBase64,
     capturedAt: snap.captured_at,
     snapshotId: snap.id,
     kpis: snap.kpis,
     score: snap.score,
+    cardNumber: snap.card_number || 1,
     tags: snap.provenance?.tags || [],
     qrDataUri,
+    source: snap.provenance?.source || 'mock',
   };
   const html = buildCardHTML(cardData);
 
-  // 5. Launch browser + screenshot
-  const browser = await launchBrowser();
+  // 5. Launch (or reuse) browser + screenshot
+  const browser = await getBrowser();
   const page = await browser.newPage({
     viewport: { width: CARD_WIDTH, height: CARD_HEIGHT },
   });
+  page.setDefaultTimeout(10000);
 
-  await page.setContent(html, { waitUntil: 'networkidle' });
+  let pngBuffer: Buffer | null = null;
+  let pdfBuffer: Buffer | null = null;
 
-  // Wait a moment for fonts
-  await page.waitForTimeout(500);
+  try {
+    await page.setContent(html, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500); // Wait a moment for fonts
+    pngBuffer = await page.screenshot({ type: 'png' });
 
-  const pngBuffer = await page.screenshot({ type: 'png' });
+    // PDF
+    pdfBuffer = await page.pdf({
+      width: `${CARD_WIDTH}px`,
+      height: `${CARD_HEIGHT}px`,
+      printBackground: true,
+      margin: { top: '0', bottom: '0', left: '0', right: '0' },
+    });
+  } finally {
+    await page.close();
+  }
 
-  // PDF
-  const pdfBuffer = await page.pdf({
-    width: `${CARD_WIDTH}px`,
-    height: `${CARD_HEIGHT}px`,
-    printBackground: true,
-    margin: { top: '0', bottom: '0', left: '0', right: '0' },
-  });
-
-  await browser.close();
+  if (!pngBuffer || !pdfBuffer) {
+    throw new Error('Render did not produce buffers');
+  }
 
   // 6. Upload to Supabase Storage
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -124,6 +152,7 @@ async function renderCardForSnapshot(snapshotId: string): Promise<{ pngUrl: stri
   );
 
   return { pngUrl, pdfUrl };
+
 }
 
 export { renderCardForSnapshot };
