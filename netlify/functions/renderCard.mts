@@ -5,21 +5,6 @@ import { buildCardHTML, type CardData } from '../lib/cardTemplate.mts';
 import { generateQrDataUri } from '../lib/qr.mts';
 import { launchBrowser } from '../lib/chromium.mts';
 import { CARD_WIDTH, CARD_HEIGHT } from '../../src/shared/constants.ts';
-import type { Browser } from 'playwright-core';
-
-let browserPromise: Promise<Browser> | null = null;
-
-async function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = launchBrowser();
-  }
-  try {
-    return await browserPromise;
-  } catch (err) {
-    browserPromise = null;
-    throw err;
-  }
-}
 
 export const config: Config = {
   path: '/api/render-card',
@@ -89,11 +74,9 @@ async function renderCardForSnapshot(snapshotId: string): Promise<{ pngUrl: stri
   };
   const html = buildCardHTML(cardData);
 
-  // 5. Launch (or reuse) browser + screenshot
-  const browser = await getBrowser();
-  const page = await browser.newPage({
-    viewport: { width: CARD_WIDTH, height: CARD_HEIGHT },
-  });
+  // 5. Launch browser + render. Reuse across invocations is unreliable on Netlify.
+  const browser = await launchBrowser();
+  const page = await browser.newPage({ viewport: { width: CARD_WIDTH, height: CARD_HEIGHT } });
   page.setDefaultTimeout(10000);
 
   let pngBuffer: Buffer | null = null;
@@ -112,7 +95,8 @@ async function renderCardForSnapshot(snapshotId: string): Promise<{ pngUrl: stri
       margin: { top: '0', bottom: '0', left: '0', right: '0' },
     });
   } finally {
-    await page.close();
+    await page.close().catch(() => {});
+    await browser.close().catch(() => {});
   }
 
   if (!pngBuffer || !pdfBuffer) {
