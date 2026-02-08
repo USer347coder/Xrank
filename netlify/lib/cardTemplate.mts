@@ -40,13 +40,13 @@ export function buildCardHTML(data: CardData): string {
   const tagBadges = data.tags.map(t =>
     `<span style="
       display:inline-block;
-      padding:3px 8px;
+      padding:6px 12px;
       border-radius:6px;
       border:1px solid ${t === 'foil' ? '#FFD700' : t === 'genesis' ? '#00FFAA' : 'rgba(255,255,255,0.2)'};
       background:${t === 'foil' ? 'rgba(255,215,0,0.15)' : t === 'genesis' ? 'rgba(0,255,170,0.12)' : 'rgba(0,0,0,0.3)'};
-      font-size:9px;
+      font-size:12px;
       font-weight:900;
-      letter-spacing:0.18em;
+      letter-spacing:0.14em;
       color:${t === 'foil' ? '#FFD700' : t === 'genesis' ? '#00FFAA' : 'rgba(255,255,255,0.7)'};
       text-transform:uppercase;
     ">${TAG_LABELS[t] || t.toUpperCase()}</span>`
@@ -57,21 +57,27 @@ export function buildCardHTML(data: CardData): string {
       border:1px solid rgba(255,255,255,0.10);
       border-radius:10px;
       background:rgba(0,0,0,0.35);
-      padding:8px 10px;
+      padding:14px 12px;
       text-align:center;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:8px;
     ">
       <div style="
-        letter-spacing:0.16em;
+        letter-spacing:0.12em;
         font-weight:800;
-        font-size:8px;
-        opacity:0.55;
+        font-size:12px;
+        opacity:0.78;
         text-transform:uppercase;
-        margin-bottom:4px;
       ">${label}</div>
       <div style="
-        font-size:16px;
-        letter-spacing:0.04em;
+        font-size:28px;
+        letter-spacing:0.01em;
         font-weight:900;
+        line-height:1.02;
+        font-variant-numeric: tabular-nums;
+        text-shadow:0 2px 10px rgba(0,0,0,0.45);
       ">${fmt(data.kpis[key])}</div>
     </div>
   `).join('');
@@ -139,7 +145,7 @@ export function buildCardHTML(data: CardData): string {
   position:relative;
   overflow:hidden;
   color:rgba(255,255,255,0.92);
-  padding:20px 24px;
+  padding:16px 20px;
   display:flex;
   flex-direction:column;
 ">
@@ -156,14 +162,14 @@ export function buildCardHTML(data: CardData): string {
   "></div>
 
   <!-- Top bar: Tier + Edition + Score HP -->
-  <div style="display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2;margin-bottom:16px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2;margin-bottom:12px;">
     <div style="display:flex;align-items:center;gap:6px;">
       <div style="
-        padding:5px 12px;
+        padding:7px 14px;
         border-radius:8px;
         border:1px solid ${tier.color}44;
         background:${tier.glow};
-        font-size:11px;
+        font-size:13px;
         font-weight:900;
         letter-spacing:0.20em;
         color:${tier.color};
@@ -172,12 +178,13 @@ export function buildCardHTML(data: CardData): string {
       ${tagBadges}
     </div>
     <div style="display:flex;align-items:baseline;gap:4px;">
-      <span style="font-size:10px;font-weight:700;letter-spacing:0.16em;opacity:0.5;">SCORE</span>
+      <span style="font-size:13px;font-weight:800;letter-spacing:0.14em;opacity:0.65;">SCORE</span>
       <span style="
-        font-size:32px;
+        font-size:54px;
         font-weight:900;
         letter-spacing:0.04em;
         line-height:1;
+        font-variant-numeric: tabular-nums;
         color:${tier.color};
         text-shadow:0 0 20px ${tier.glow}, 0 4px 12px rgba(0,0,0,0.5);
       ">${data.score.value}</span>
@@ -185,9 +192,9 @@ export function buildCardHTML(data: CardData): string {
   </div>
 
   <!-- Avatar (centered, large, circular) -->
-  <div style="position:relative;z-index:2;display:flex;justify-content:center;margin-bottom:14px;">
+  <div style="position:relative;z-index:2;display:flex;justify-content:center;margin-bottom:12px;">
     <div style="
-      width:200px;height:200px;
+      width:190px;height:190px;
       border-radius:50%;
       border:3px solid ${tier.color}55;
       background:rgba(255,255,255,0.04);
@@ -202,16 +209,16 @@ export function buildCardHTML(data: CardData): string {
   </div>
 
   <!-- Name + Handle + Bio (centered) -->
-  <div style="position:relative;z-index:2;text-align:center;margin-bottom:14px;">
+  <div style="position:relative;z-index:2;text-align:center;margin-bottom:10px;">
     <div style="
-      font-size:24px;
-      letter-spacing:0.06em;
+      font-size:30px;
+      letter-spacing:0.05em;
       font-weight:900;
       text-transform:uppercase;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
-      max-width:560px;
+      max-width:565px;
       margin:0 auto;
       text-shadow:0 2px 8px rgba(0,0,0,0.5);
     ">${data.displayName}</div>
@@ -219,24 +226,24 @@ export function buildCardHTML(data: CardData): string {
     <div style="
       margin-top:6px;
       display:inline-block;
-      padding:4px 12px;
+      padding:6px 14px;
       border-radius:8px;
       border:1px solid rgba(255,255,255,0.12);
       background:rgba(0,0,0,0.25);
-      letter-spacing:0.18em;
-      font-weight:700;
-      font-size:11px;
-      color:rgba(255,255,255,0.60);
+      letter-spacing:0.10em;
+      font-weight:800;
+      font-size:14px;
+      color:rgba(255,255,255,0.80);
     ">@${data.username}</div>
 
     ${bio ? `
     <div style="
       margin-top:10px;
-      font-size:11px;
-      line-height:1.5;
-      opacity:0.50;
+      font-size:14px;
+      line-height:1.45;
+      opacity:0.68;
       font-style:italic;
-      max-width:480px;
+      max-width:520px;
       margin-left:auto;
       margin-right:auto;
       overflow:hidden;
@@ -252,7 +259,7 @@ export function buildCardHTML(data: CardData): string {
     position:relative;z-index:2;
     height:1px;
     background:linear-gradient(90deg, transparent, ${tier.color}33, rgba(255,255,255,0.08), ${tier.color}33, transparent);
-    margin:0 10px 14px;
+    margin:0 10px 10px;
   "></div>
 
   <!-- 6 stat tiles (3x2) -->
@@ -260,8 +267,8 @@ export function buildCardHTML(data: CardData): string {
     position:relative;z-index:2;
     display:grid;
     grid-template-columns:repeat(3,1fr);
-    gap:8px;
-    margin-bottom:14px;
+    gap:10px;
+    margin-bottom:10px;
     flex-grow:1;
   ">
     ${traitTiles}
@@ -278,17 +285,17 @@ export function buildCardHTML(data: CardData): string {
   ">
     <div>
       <div style="
-        font-size:11px;
+        font-size:14px;
         font-weight:900;
         letter-spacing:0.14em;
         opacity:0.80;
         margin-bottom:3px;
       ">ED. #${data.cardNumber}</div>
       <div style="
-        letter-spacing:0.16em;
-        font-weight:700;
-        font-size:9px;
-        opacity:0.45;
+        letter-spacing:0.12em;
+        font-weight:800;
+        font-size:11px;
+        opacity:0.55;
       ">${cardId} &middot; <span style="color:${data.source === 'mock' ? '#FF6B35' : '#00FF88'}">${data.source === 'mock' ? 'MOCK' : data.source === 'cached' ? 'CACHED' : 'LIVE'}</span> &middot; ${ts}</div>
     </div>
 
