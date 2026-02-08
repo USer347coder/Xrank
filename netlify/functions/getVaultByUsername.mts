@@ -18,23 +18,34 @@ export default async (req: Request) => {
     if (!rawUsername) return errorResponse('username required', 400);
     const username = normalizeUsername(rawUsername);
 
-    // Find profile
-    const { data: profile, error: profErr } = await supabaseAdmin
+    // Find all matching profiles (case-insensitive) to tolerate historical duplicates.
+    const { data: profiles, error: profErr } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('platform', 'x')
-      .eq('username', username)
-      .single();
+      .ilike('username', username);
 
-    if (profErr || !profile) {
+    if (profErr || !profiles || profiles.length === 0) {
       return errorResponse('Profile not found', 404);
     }
 
-    // Fetch all snapshots for this profile
+    const profileIds = profiles.map((p) => p.id);
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
+
+    // Canonical profile for page header
+    const canonical =
+      profiles.find((p) => p.username === username) ||
+      [...profiles].sort((a, b) => {
+        const la = a.last_fetched_at ? new Date(a.last_fetched_at).getTime() : 0;
+        const lb = b.last_fetched_at ? new Date(b.last_fetched_at).getTime() : 0;
+        return lb - la;
+      })[0];
+
+    // Fetch all snapshots for any matching profile row
     const { data: snapshots, error: snapErr } = await supabaseAdmin
       .from('snapshots')
       .select('*')
-      .eq('profile_id', profile.id)
+      .in('profile_id', profileIds)
       .order('captured_at', { ascending: false });
 
     if (snapErr) return errorResponse(snapErr.message);
@@ -42,19 +53,23 @@ export default async (req: Request) => {
     const snapshotIds = (snapshots || []).map((s) => s.id);
 
     // Fetch public vault entries for these snapshots
-    const { data: vaultEntries } = await supabaseAdmin
-      .from('vault_entries')
-      .select('*')
-      .in('snapshot_id', snapshotIds)
-      .in('visibility', ['public', 'unlisted']);
+    const { data: vaultEntries } = snapshotIds.length > 0
+      ? await supabaseAdmin
+        .from('vault_entries')
+        .select('*')
+        .in('snapshot_id', snapshotIds)
+        .in('visibility', ['public', 'unlisted'])
+      : { data: [] };
 
     const vaultMap = new Map((vaultEntries || []).map((v) => [v.snapshot_id, v]));
 
     // Fetch assets
-    const { data: assets } = await supabaseAdmin
-      .from('card_assets')
-      .select('*')
-      .in('snapshot_id', snapshotIds);
+    const { data: assets } = snapshotIds.length > 0
+      ? await supabaseAdmin
+        .from('card_assets')
+        .select('*')
+        .in('snapshot_id', snapshotIds)
+      : { data: [] };
 
     const assetMap = new Map<string, typeof assets>();
     for (const a of assets || []) {
@@ -71,12 +86,12 @@ export default async (req: Request) => {
           ? { id: ve.id, visibility: ve.visibility, tags: ve.tags, created_at: ve.created_at }
           : null,
         snapshot: snap,
-        profile,
+        profile: profileById.get(snap.profile_id) || canonical,
         assets: assetMap.get(snap.id) || [],
       };
     });
 
-    return jsonResponse({ profile, cards });
+    return jsonResponse({ profile: canonical, cards });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return errorResponse(msg);
