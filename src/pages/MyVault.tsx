@@ -60,6 +60,14 @@ export default function MyVault() {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-2xl border border-white/10 bg-amber-500/10 text-amber-100 p-4 text-xs leading-relaxed">
+        <div className="font-bold tracking-[0.14em] text-amber-200 mb-1">DISCLAIMER</div>
+        <div className="opacity-80">
+          This is a parody/fun project. Scores and stats are generated and may be inaccurate, incomplete, or outdated.
+          Not affiliated with X/Twitter or any profiled individual. Not financial advice or an endorsement.
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
